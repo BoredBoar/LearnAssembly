@@ -51,6 +51,7 @@ above are from the App Store listing as of September 2026.*
 ```sh
 ./avr 1              # build lesson 01 and flash it to the board
 ./avr build 1        # build only, no board needed
+./avr check 3        # run YOUR answer.inc in a simulator - no board needed
 ./avr list           # lessons, envs, and the detected serial port
 ./avr help           # everything else
 ```
@@ -72,6 +73,7 @@ Full install instructions: [docs/SETUP.md](docs/SETUP.md).
 ```
 avr                    build/flash/inspect helper (./avr help)
 INSTRUCTIONS.md        every instruction the lessons use, and nothing else
+tools/avrsim.py        tiny AVR interpreter; grades a level without hardware
 platformio.ini         one build env per board x lesson
 include/board.inc      the pin-to-port map that differs between the two chips
 lessons/
@@ -130,6 +132,13 @@ jumps, returning to a label the answer provides.
 
 Adding more levels follows that shape: a `*.S` checker holding `main`, and an
 `answer.inc` the student edits.
+
+Levels can be graded without a board. `./avr check 3` assembles your answer and
+runs it in [tools/avrsim.py](tools/avrsim.py), a small AVR interpreter that
+knows only the instructions these lessons use, and reports PASS, WRONG or DARK.
+Each level also ships `tests/*.inc` — one fixture per plausible student answer,
+each declaring the verdict it expects — and `./avr verify` runs all of them.
+That is what keeps the "Verified behaviour" table in each lesson README honest.
 
 ## Adding a lesson
 

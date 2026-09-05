@@ -58,7 +58,7 @@ equal. That closes off "return the input", "double the first value" and
 
 ## Verified behaviour
 
-Every one of these was run through the assembled firmware before shipping:
+Reproduce with `./avr verify 4`; the fixtures live in `tests/`.
 
 | Answer | Result |
 | --- | --- |

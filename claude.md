@@ -69,6 +69,12 @@ Also worth knowing: the Mega's larger interrupt vector table pushes `main` to `0
 avr                    helper script: ./avr 1 = build+flash, ./avr help for the rest
 INSTRUCTIONS.md        every instruction the lessons use and nothing else (~30),
                        with the four gotcha rules and a "beyond this list" plan
+tools/avrsim.py        ~25-instruction AVR interpreter. Executes a built lesson
+                       from `main` to the checker's end label and reports
+                       PASS/WRONG/DARK. No memory, stack, I/O or timing; it
+                       raises loudly on an instruction it does not know
+lessons/*/tests/*.inc  one fixture per plausible student answer, each with an
+                       `; expect: PASS|WRONG|DARK` header
 platformio.ini         12 envs, named <board>-<lesson>; default mega-01-blink
 include/board.inc      per-chip pin-to-port map (the only board-specific file);
                        also applies _SFR_IO_ADDR so lessons write `sbi LED_PORT, LED_BIT`
@@ -184,12 +190,27 @@ is a subroutine call built by hand from two plain jumps. Two consequences:
 
 ### Verifying a level without hardware
 
-Assembling proves nothing about whether a level grades correctly. Each level's
-README carries a "Verified behaviour" table produced by running the assembled
-firmware through a small AVR interpreter (skeleton / correct / each plausible
-wrong answer / correct-but-unsignalled). Reproduce that table for any new level
-before shipping it. The interpreter currently lives outside the repo; folding it
-in as `./avr check N` is an open item below.
+Assembling proves nothing about whether a level grades correctly, so every level
+is verified by execution:
+
+    ./avr check <lesson>     simulate the answer.inc that is there now
+    ./avr verify [<lesson>]  run a level's fixtures, or every level's
+
+`tools/avrsim.py` disassembles the built firmware and interprets it from `main`
+until it reaches a checker end label (`all_correct`/`right_answer`,
+`wrong_answer`, `no_signal`), which is enough to answer "does this answer
+pass?". It models no memory, stack, I/O or timing, and raises rather than
+guessing when it meets an unknown instruction — so adding an instruction to a
+lesson means adding it to `avrsim.py` and `INSTRUCTIONS.md` too.
+
+**A new level is not finished until it has a `tests/` directory.** One fixture
+per plausible student answer, each a complete replacement for `answer.inc` with
+an `; expect: PASS|WRONG|DARK` header. At minimum: the empty skeleton, a correct
+answer, every wrong approach the test values were designed to catch, and a
+correct-but-unsignalled answer. `./avr verify` also lints that the `answer.inc`
+which ships contains no instructions, so a solution cannot be committed by
+accident. The "Verified behaviour" table in each lesson README is just that
+fixture list written out.
 
 ## Open items / not yet decided
 - Whether to introduce a second architecture unit (ARM Cortex-M via Uno R4 WiFi, or RISC-V via ESP32-C3) after the AVR fundamentals unit
@@ -197,5 +218,4 @@ in as `./avr check N` is an open item below.
 - Whether the Mega's split between `sbi`-able and memory-mapped ports is a teaching liability worth switching the class to Unos over
 - Lesson sequence beyond 06 (timers/interrupts, USART, and memory/pointers are the obvious next candidates)
 - **Flat vocabulary vs. tiers.** `INSTRUCTIONS.md` currently lists only what the lessons use (~30 instructions). Either keep it flat and add each instruction when a level needs it, or group levels into tiers that each unlock a block (logic -> shifts -> memory -> subroutines -> interrupts) so students always know the size of their vocabulary. Undecided
-- **Fold the level verifier into the repo.** A small AVR interpreter was used to verify levels 04 and 05 by executing the assembled firmware for every plausible student answer; it currently lives outside the repo. Making it `./avr check N` would let level authors regenerate each README's "Verified behaviour" table
 - **Debugging is researched but not set up** — see "Debugging and single-stepping" in `docs/SETUP.md`. Three findings worth carrying: (1) PlatformIO's bundled `avr-gdb` is broken on this Mac (linked against the removed Python 2.7 framework), so any GDB-based debugging needs `brew install avr-gdb` from the `osx-cross/avr` tap first; (2) this board's high fuse is `0xD8`, so **JTAG and OCD are disabled** and enabling them needs an ISP programmer, not the bootloader; (3) JTAG would occupy PF4-PF7 = pins A4-A7. The ATmega2560 having real JTAG where the 328P has only debugWIRE is a genuine point in the Mega's favour for the board question above. Recommended first step when wanted: `debug_tool = simavr` (simulator, no hardware, shows r0-r31 live)

@@ -55,7 +55,7 @@ wraps into the negative half, which is worth seeing happen.
 
 ## Verified behaviour
 
-Every one of these was executed against the assembled firmware:
+Reproduce with `./avr verify 5`; the fixtures live in `tests/`.
 
 | Answer | Result |
 | --- | --- |

@@ -5,6 +5,8 @@
 #
 #   ./avr 1                 build lesson 01 and flash it to the board
 #   ./avr build 1           build only, no board needed
+#   ./avr check 3           run YOUR answer.inc in a simulator - no board needed
+#   ./avr verify            run every level's test fixtures (level authors)
 #   ./avr dis 1             disassemble the built firmware
 #   ./avr size 1            report flash/RAM used
 #   ./avr monitor           open a serial terminal
@@ -113,6 +115,60 @@ case "${1:-}" in
         env="$(env_for "${2:-}")" || exit 1
         "$PIO" run -e "$env" -t size
         ;;
+    check)
+        env="$(env_for "${2:-}")" || exit 1
+        info "simulating $env with your current answer.inc"
+        "$PIO" run -e "$env" >/dev/null 2>&1 || die "build failed; run: ./avr build ${2:-}"
+        python3 tools/avrsim.py ".pio/build/$env/firmware.elf"
+        ;;
+    verify)
+        if [ -n "${2:-}" ]; then targets="$(resolve "$2")" || exit 1
+        else targets="$(lessons)"; fi
+        # Fixtures are swapped in over answer.inc, so stash every answer first
+        # and put them all back on the way out, however we leave.
+        tmp="$(mktemp -d)"
+        trap 'for f in "$tmp"/*.bak; do [ -e "$f" ] || continue; b="$(basename "$f" .bak)"; cp "$f" "lessons/$b/answer.inc"; done; rm -rf "$tmp"' EXIT
+        for l in $targets; do
+            [ -f "lessons/$l/answer.inc" ] && cp "lessons/$l/answer.inc" "$tmp/$l.bak"
+        done
+        failures=0
+        for l in $targets; do
+            tdir="lessons/$l/tests"
+            [ -d "$tdir" ] || continue
+            echo "$l"
+            # the answer.inc that ships must contain no instructions
+            if grep -qE '^[[:space:]]+(mov|add|ldi|jmp|neg|com|inc|dec|cpi|cp|sbi|cbi|nop|rjmp|br[a-z]+)[[:space:]]' "$tmp/$l.bak"; then
+                printf '  FAIL  %-28s shipped answer.inc is not blank
+' "(lint)"; failures=$((failures+1))
+            else
+                printf '  ok    %-28s shipped answer.inc is blank
+' "(lint)"
+            fi
+            for t in "$tdir"/*.inc; do
+                want="$(grep -m1 '^; expect:' "$t" | awk '{print $3}')"
+                [ -n "$want" ] || { printf '  FAIL  %-28s no "; expect:" header
+' "$(basename "$t")"; failures=$((failures+1)); continue; }
+                cp "$t" "lessons/$l/answer.inc"
+                if "$PIO" run -e "${BOARD}-${l}" >/dev/null 2>&1; then
+                    # avrsim exits non-zero for a non-PASS verdict, which is
+                    # useful for `check` but would trip set -e here.
+                    got="$(python3 tools/avrsim.py ".pio/build/${BOARD}-${l}/firmware.elf" 2>&1 | head -1 | awk '{print $1}')" || true
+                else
+                    got="BUILD-FAILED"
+                fi
+                if [ "$got" = "$want" ]; then
+                    printf '  ok    %-28s %s
+' "$(basename "$t")" "$got"
+                else
+                    printf '  FAIL  %-28s expected %s, got %s
+' "$(basename "$t")" "$want" "$got"
+                    failures=$((failures+1))
+                fi
+            done
+        done
+        echo
+        if [ "$failures" -eq 0 ]; then info "all fixtures behaved as expected"; else die "$failures fixture(s) did not behave as expected"; fi
+        ;;
     dis)
         env="$(env_for "${2:-}")" || exit 1
         "$PIO" run -e "$env" >/dev/null 2>&1 || die "build failed; run: ./avr build ${2:-}"
@@ -126,7 +182,7 @@ case "${1:-}" in
         "$PIO" device monitor -p "$port"
         ;;
     help|--help|-h)
-        sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
         ;;
     "")
         die "nothing to do. try: ./avr list   or   ./avr help"
