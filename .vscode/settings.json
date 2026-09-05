@@ -1,0 +1,16 @@
+{
+  // The AVR Support extension (rockcat.avr-support) registers its grammar for
+  // .asm and .inc only. Our lesson sources use the capital .S extension so that
+  // avr-gcc runs the C preprocessor over them first, so map it here.
+  "files.associations": {
+    "*.S": "avr",
+    "*.inc": "avr"
+  },
+
+  "[avr]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false,
+    "editor.rulers": [80]
+  }
+}

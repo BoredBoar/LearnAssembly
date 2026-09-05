@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+#
+# avr - build, flash and inspect the lessons in this repo without remembering
+#       PlatformIO env names or where pio is installed.
+#
+#   ./avr 1                 build lesson 01 and flash it to the board
+#   ./avr build 1           build only, no board needed
+#   ./avr dis 1             disassemble the built firmware
+#   ./avr size 1            report flash/RAM used
+#   ./avr monitor           open a serial terminal
+#   ./avr list              list lessons, envs and detected boards
+#   ./avr clean             delete all build output
+#
+# Lessons match loosely: 1, 01, blink and 01-blink all mean lessons/01-blink.
+# Add --uno to target an ATmega328P board instead of the Mega:
+#
+#   ./avr 1 --uno
+#
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+BOARD=mega
+ARGS=()
+for a in "$@"; do
+    case "$a" in
+        --uno)  BOARD=uno  ;;
+        --mega) BOARD=mega ;;
+        *)      ARGS+=("$a") ;;
+    esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
+# PlatformIO's bundled urllib3 warns about LibreSSL on macOS; it is noise.
+export PYTHONWARNINGS=ignore
+
+die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+info() { printf '\033[36m%s\033[0m\n' "$*"; }
+
+# --- locate PlatformIO ------------------------------------------------------
+PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
+[ -x "$PIO" ] || PIO="$(command -v pio || true)"
+[ -n "$PIO" ] && [ -x "$PIO" ] || die "PlatformIO not found. See docs/SETUP.md."
+
+# --- locate the AVR binutils (for dis) --------------------------------------
+TOOLCHAIN="$HOME/.platformio/packages/toolchain-atmelavr/bin"
+
+# --- find a connected board -------------------------------------------------
+find_port() {
+    # usbmodem = ATmega16U2 (official boards); wchusbserial = CH340 clones;
+    # SLAB_USBtoUART = CP2102 clones. Looping rather than using `ls` keeps an
+    # unmatched glob from failing the command under `set -o pipefail`.
+    local p
+    for p in /dev/cu.usbmodem* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART*; do
+        if [ -e "$p" ]; then echo "$p"; return 0; fi
+    done
+    return 0
+}
+
+require_port() {
+    local p; p="$(find_port)"
+    [ -n "$p" ] || die "no board detected.
+  Plug it in over USB and try again. If the board is a clone, it may need the
+  CH340 or CP2102 driver first - see docs/SETUP.md."
+    echo "$p"
+}
+
+# --- resolve a lesson name --------------------------------------------------
+lessons() { ls -d lessons/*/ 2>/dev/null | sed 's|lessons/||; s|/$||' | sort; }
+
+resolve() {
+    local want="${1:-}" hits
+    [ -n "$want" ] || die "which lesson? try: ./avr list"
+    # exact, then zero-padded number, then substring
+    hits="$(lessons | grep -x "$want" || true)"
+    [ -n "$hits" ] || hits="$(lessons | grep -E "^0*${want}-" || true)"
+    [ -n "$hits" ] || hits="$(lessons | grep -- "$want" || true)"
+    [ -n "$hits" ] || die "no lesson matches '$want'. try: ./avr list"
+    [ "$(echo "$hits" | wc -l)" -eq 1 ] || die "'$want' matches several lessons:
+$(echo "$hits" | sed 's/^/  /')"
+    echo "$hits"
+}
+
+# NOTE: resolve() calls die(), whose `exit` only leaves the command
+# substitution's subshell - so the status must be propagated by hand or a bad
+# lesson name silently becomes an env like "mega-".
+env_for() {
+    local l
+    l="$(resolve "${1:-}")" || return 1
+    echo "${BOARD}-${l}"
+}
+
+# --- commands ---------------------------------------------------------------
+case "${1:-}" in
+    list)
+        echo "lessons:"; lessons | sed 's/^/  /'
+        echo "envs:"; grep -oE '^\[env:[^]]+\]' platformio.ini | tr -d '[]' | sed 's/env:/  /'
+        echo "board: $BOARD (override with --uno)"
+        local_port="$(find_port)"
+        echo "port:  ${local_port:-<none detected>}"
+        ;;
+    clean)
+        info "cleaning all build output"
+        "$PIO" run -t clean >/dev/null 2>&1 || true
+        rm -rf .pio/build
+        echo "done"
+        ;;
+    build)
+        env="$(env_for "${2:-}")" || exit 1
+        info "building $env"
+        "$PIO" run -e "$env"
+        ;;
+    size)
+        env="$(env_for "${2:-}")" || exit 1
+        "$PIO" run -e "$env" -t size
+        ;;
+    dis)
+        env="$(env_for "${2:-}")" || exit 1
+        "$PIO" run -e "$env" >/dev/null 2>&1 || die "build failed; run: ./avr build ${2:-}"
+        elf=".pio/build/$env/firmware.elf"
+        [ -f "$elf" ] || die "no firmware at $elf"
+        "$TOOLCHAIN/avr-objdump" -d "$elf" | sed -n '/<main>:/,/<_exit>:/p'
+        ;;
+    monitor)
+        port="$(require_port)" || exit 1
+        info "opening serial monitor on $port (ctrl-c to quit)"
+        "$PIO" device monitor -p "$port"
+        ;;
+    help|--help|-h)
+        sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        ;;
+    "")
+        die "nothing to do. try: ./avr list   or   ./avr help"
+        ;;
+    *)
+        # bare lesson name: build and flash
+        env="$(env_for "$1")" || exit 1
+        port="$(require_port)" || exit 1
+        info "building $env and flashing to $port"
+        "$PIO" run -e "$env" -t upload --upload-port "$port"
+        ;;
+esac
