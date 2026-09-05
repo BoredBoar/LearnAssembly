@@ -72,6 +72,7 @@ Full install instructions: [docs/SETUP.md](docs/SETUP.md).
 
 ```
 avr                    build/flash/inspect helper (./avr help)
+LICENSE                MIT
 INSTRUCTIONS.md        every instruction the lessons use, and nothing else
 tools/avrsim.py        tiny AVR interpreter; grades a level without hardware
 platformio.ini         one build env per board x lesson
@@ -155,6 +156,24 @@ Use a capital `.S` extension: it runs the C preprocessor first, which is what
 makes `#include` and `#define` work. Inside a `.S` file `;` starts an assembler
 comment — but **not** on a `#define` line, where the preprocessor pastes it
 into the macro body. Use `/* ... */` there.
+
+## Authoring note
+
+Much of the code, lesson text and tooling in this repo was written by **Claude**
+(Anthropic's Claude Code), working with the repository owner, who directed the
+design, made the pedagogical calls, and verified the results on real hardware.
+Commits carry a `Co-Authored-By: Claude` trailer.
+
+Where a claim in these files is checkable, it was checked rather than asserted:
+pin mappings come from Arduino's own `pins_arduino.h` variant tables, register
+addresses and instruction restrictions from the assembler's own error messages,
+and every level's grading behaviour from executing the assembled firmware
+(`./avr verify`). Even so, treat the lesson material as reviewed rather than
+infallible — corrections and issues are welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Hardware
 
