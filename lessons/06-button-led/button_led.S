@@ -1,5 +1,5 @@
 ; -----------------------------------------------------------------------------
-; Lesson 02 - Reading an input pin
+; Lesson 06 - Reading an input pin
 ;
 ; Lights the onboard LED (digital pin 13) while a pushbutton wired between
 ; digital pin 2 and GND is held down.
@@ -10,7 +10,7 @@
 ;         The wiring is the same on an Uno and a Mega; the ports behind those
 ;         two pins are not. See include/board.inc.
 ;
-; Build & flash:  pio run -e mega-02-button-led -t upload
+; Build & flash:  ./avr 6
 ; -----------------------------------------------------------------------------
 
 #include "board.inc"

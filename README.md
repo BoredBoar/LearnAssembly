@@ -10,6 +10,42 @@ Supports two boards from one set of lesson sources:
 | Arduino Mega 2560 / ELEGOO MEGA | ATmega2560 | `mega-` |
 | Arduino Uno / ELEGOO UNO | ATmega328P | `uno-` |
 
+## Credit where it's due: The Assembly Game
+
+The level format in this repo — a puzzle, a fixed set of instructions, a
+machine that tells you whether you got it right — is lifted wholesale from
+**[The Assembly Game](https://apps.apple.com/us/app/the-assembly-game/id6752651042)**
+by Chilling Moose. If that idea appeals to you, **buy the game**. It is $2.99,
+which is less than the resistor kit you will need for lesson 06.
+
+It bills itself as *Algorithm Puzzles in Assembly*, and it is exactly that: a
+progression of algorithm problems — GCD through binary search and beyond — that
+you solve by writing assembly, with its own built-in assembly language, real-time
+feedback on what your code does, and a sandbox for writing whatever you like
+once the puzzles have stopped scaring you. It runs on iPhone, iPad, Mac (Apple
+silicon) and Apple Vision.
+
+What it gets right, and what this repo is trying to borrow:
+
+- **One idea per puzzle.** You are never fighting two unfamiliar things at once.
+- **The machine is small enough to hold in your head.** A short instruction list
+  is a feature, not a limitation — see [INSTRUCTIONS.md](INSTRUCTIONS.md).
+- **The feedback loop is immediate and unambiguous.** You do not wonder whether
+  you solved it.
+
+This project asks what happens if you move that loop onto **real silicon**. The
+puzzles here run on a $30 board on your desk, the "output" is a physical LED,
+and when your answer is wrong the failure is a light blinking at you rather than
+a red mark on a screen. The trade is honest: the game is a far better place to
+learn the *thinking*, because it iterates in seconds and has none of the
+toolchain and wiring in the way. This repo is a better place to learn what a
+microcontroller actually is.
+
+Play the game first. Then come and make an LED do it.
+
+*This project is not affiliated with or endorsed by Chilling Moose. Details
+above are from the App Store listing as of September 2026.*
+
 ## Quick start
 
 ```sh
@@ -35,11 +71,17 @@ Full install instructions: [docs/SETUP.md](docs/SETUP.md).
 
 ```
 avr                    build/flash/inspect helper (./avr help)
+INSTRUCTIONS.md        every instruction the lessons use, and nothing else
 platformio.ini         one build env per board x lesson
 include/board.inc      the pin-to-port map that differs between the two chips
 lessons/
   01-blink/            onboard LED, DDR/PORT, sbi/cbi, a hand-written delay loop
-  02-button-led/       input pins, internal pull-ups, sbic/skip-based branching
+  02-hello-world/      a LEVEL: student loads 42 into a register, board grades it
+  03-echo/             a LEVEL: copy input->output, signal done, graded 5 rounds
+  04-sum/              a LEVEL: read two inputs and add them; must request the
+                       second value, so the answer has to sequence its reads
+  05-absolute-value/   a LEVEL: two's complement, sign testing, neg
+  06-button-led/       input pins, internal pull-ups, sbic/skip-based branching
 docs/SETUP.md          toolchain install, flashing, serial-port troubleshooting
 ```
 
@@ -74,6 +116,21 @@ That covers Mega digital pins 6, 7, 8, 9 and 14–17, which need `lds`/`sts`
 low I/O space and behave exactly like the Uno's. Both lessons stay on those
 ports on purpose.
 
+## Lesson vs. level
+
+`01` and `06` are **demos**: complete programs to read, run and modify.
+
+`02` through `05` are **levels**: the student edits one small file
+(`answer.inc`) and the board grades the result. The checker lives in a separate
+`.S` file that `#include`s the student's answer inline, so there is no call and
+no stack involved. Levels 03 and 04 run the answer five times with different
+inputs, which is what stops a hardcoded constant from passing. Level 04 adds a
+`jmp next_input` handshake — a hand-built subroutine call made of two plain
+jumps, returning to a label the answer provides.
+
+Adding more levels follows that shape: a `*.S` checker holding `main`, and an
+`answer.inc` the student edits.
+
 ## Adding a lesson
 
 1. `mkdir lessons/03-something` and add a `.S` file that defines `.global main`.
@@ -93,4 +150,4 @@ into the macro body. Use `/* ... */` there.
 ## Hardware
 
 - Arduino Mega 2560-compatible board (ELEGOO MEGA Project Starter Kit works)
-- Lesson 02 needs one pushbutton wired between digital pin 2 and GND
+- Lesson 06 needs one pushbutton wired between digital pin 2 and GND

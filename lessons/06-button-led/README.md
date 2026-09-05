@@ -1,4 +1,4 @@
-# 02 — Button and LED
+# 06 — Button and LED
 
 **Concepts:** input pins, internal pull-up resistors, active-low logic, and
 branching with the skip instructions.
@@ -7,7 +7,7 @@ branching with the skip instructions.
 the Uno) to GND. No resistor needed.
 
 ```sh
-pio run -e mega-02-button-led -t upload
+./avr 6
 ```
 
 ## What to point at

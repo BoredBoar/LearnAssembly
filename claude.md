@@ -64,24 +64,138 @@ Also worth knowing: the Mega's larger interrupt vector table pushes `main` to `0
 - **Register aliases must be `#define`.** cpp runs first on `.S` files, so `#define CNT_LO r18` is pure text substitution and the machine code is unchanged. GNU as symbol directives hold numbers, not registers, so `.set CNT_LO, r18` fails with `constant value required`; Atmel AVRASM2's `.def CNT_LO = r18` (ubiquitous in Microchip docs) is an `unknown pseudo-op` here; `.req` is ARM's. All four verified by assembling
 - **There is no absolute conditional branch.** `jmp`/`call` are absolute (4 bytes); every `br*` (`brcc`, `brne`, `breq`, `brlo`) encodes a signed PC-relative offset reaching only +63/-64 words. So conditional control flow is *always* relative, even in code that otherwise avoids `rjmp`. Both `jmp` and `call` are available on the ATmega2560 and the ATmega328P (verified by assembling for both)
 
-## Repo state (as of 2026-09-04)
+## Repo state (as of 2026-09-05)
 ```
 avr                    helper script: ./avr 1 = build+flash, ./avr help for the rest
-platformio.ini         4 envs, named <board>-<lesson>; default mega-01-blink
+INSTRUCTIONS.md        every instruction the lessons use and nothing else (~30),
+                       with the four gotcha rules and a "beyond this list" plan
+platformio.ini         12 envs, named <board>-<lesson>; default mega-01-blink
 include/board.inc      per-chip pin-to-port map (the only board-specific file);
                        also applies _SFR_IO_ADDR so lessons write `sbi LED_PORT, LED_BIT`
 lessons/01-blink/      DDR/PORT, sbi/cbi, hand-counted 5-cycle delay loop; no
                        subroutine or stack, absolute jmp (see note below)
-lessons/02-button-led/ inputs, internal pull-ups, sbic skip-based branching
+lessons/02-hello-world/ a LEVEL, not a demo: student edits answer.inc to load 42
+                       into r16; hello_world.S #includes it inline and grades it
+                       (steady LED = right, ~10 Hz blink = wrong). No call/stack
+lessons/03-echo/       a LEVEL: mock I/O in registers (INPUT r17 -> OUTPUT r16),
+                       student must `jmp done` as a stop condition; checker runs
+                       the answer 5x with 7/44/81/118/155 so hardcoding fails.
+                       Steady LED = pass, ~10 Hz blink = wrong, dark = no signal
+lessons/04-sum/        a LEVEL: read two values from INPUT and add them. Adds a
+                       `jmp next_input` handshake - the checker loads the next
+                       value then jmps back to a `resume:` label that ships in
+                       answer.inc (so the checker's jmp always resolves). A
+                       hand-built call from two jumps: no rcall/ret, no stack,
+                       fixed return point. 5 pairs, sums all <256 so `add`
+                       never carries
+lessons/05-absolute-value/ a LEVEL: two's complement. answer.inc carries the full
+                       explanation (wrap-around, sign bit, com+inc = neg, the
+                       -128 quirk). Values -60/0/60/120/-76 kill both naive
+                       answers fast: "copy" dies round 1, "always negate" round 3
+lessons/06-button-led/ inputs, internal pull-ups, sbic skip-based branching
 docs/SETUP.md          install, flashing, CH340/CP2102 driver troubleshooting
 ```
 `pio run -e mega-01-blink -t upload`. All four envs build clean; disassembly verified to hit PB7/PE4 on the Mega and PB5/PD2 on the Uno.
 
 **Hardware verified 2026-09-04:** a genuine **Arduino Mega 2560 R3** (USB `2341:0042`, signature `1E 98 01` = ATmega2560) on `/dev/cu.usbmodem21101`. `pio run -e mega-01-blink -t upload` wrote and verified 288 bytes; the pin-13 LED blinks at 1 Hz. This board enumerates as `usbmodem` via its ATmega16U2, so **no CH340 driver was needed** — but student-supplied ELEGOO clones usually do use a CH340 and will need it before a port appears.
 
+## Level design (the format to follow when adding exercises)
+
+The lesson set has two kinds of content, and new work should almost always be
+the second kind.
+
+- **Demos** (`01-blink`, `06-button-led`) are complete programs to read, run and
+  modify. Useful for introducing hardware, poor at telling a student whether
+  they have understood anything.
+- **Levels** (`02` onward) are puzzles the board grades. The format is lifted
+  from **The Assembly Game** by Chilling Moose (App Store, $2.99) — see the
+  attribution section in `README.md`, which should stay there.
+
+### Anatomy of a level
+
+Two files in `lessons/NN-name/`:
+
+| File | Role |
+| --- | --- |
+| `answer.inc` | the **only** file the student opens: task, rules, hint, and an empty marked region |
+| `<name>.S` | the checker: owns `main`, `#include`s the answer inline, grades it |
+
+The student's code is **textually included** into the middle of the checker's
+loop. This is deliberate and load-bearing:
+
+- no `rcall`, no `ret`, nothing on the stack — consistent with lesson 01, which
+  established that the stack has not been introduced yet;
+- the answer re-runs each round with no machinery;
+- `.inc` (not `.S`) keeps PlatformIO from assembling it as a second program.
+
+### The contract every level keeps
+
+- **Mock I/O in registers.** `OUTPUT` = r16, `INPUT` = r17. Both must be
+  immediate-capable (r16-r31) so `ldi`/`cpi` work on them.
+- **Register budget, stated in `answer.inc`.** Student owns r16-r17 plus r18-r20
+  scratch; the checker keeps its state in r21 upward and says so.
+- **`OUTPUT` is cleared at the top of every round**, so a previous round's
+  answer cannot be mistaken for this one's.
+- **Grade against the checker's own copy**, never against `INPUT`. An answer
+  that overwrites `INPUT` must not be able to make itself look correct.
+- **A stop condition.** The student ends with `jmp done`. The instruction
+  immediately after the include is `jmp no_signal`, so an answer that runs off
+  the end lands in its own diagnosable state instead of looking wrong.
+- **Three LED states**, identical across every level:
+
+  | LED | Meaning |
+  | --- | --- |
+  | steady on | every round correct |
+  | ~10 Hz blink | a round came back wrong |
+  | dark | never signalled |
+
+  Blink rather than dark for "wrong" is deliberate: an unlit LED is
+  indistinguishable from a board that is not running, and 10 Hz is visibly
+  different from lesson 01's 1 Hz.
+
+### Designing the test cases
+
+- **Several rounds, always.** One round can be passed by hardcoding. Levels run
+  five, generated arithmetically rather than tabulated (no `lpm` needed yet).
+- **Pick values that kill the plausible wrong answers early**, and write down
+  which wrong answer each round catches. Lesson 04's pairs rule out "return the
+  input", "double the first value" and "hardcode round one". Lesson 05's values
+  kill "just copy" at round 1 and "always negate" at round 3.
+- **Include the edge case that exposes a bad condition** — lesson 05 has a zero
+  round precisely because "greater than zero" is a tempting, wrong sign test.
+- **Stay inside 8 bits** unless the level is *about* overflow. Lesson 04's sums
+  are all < 256 so `add` never carries.
+- **Do not put the answer in the checker.** Where the grading logic would
+  duplicate the intended solution, write it a different way: lesson 05 computes
+  its expected value with `com`+`inc` so a student reading the checker learns
+  what `neg` does rather than finding the answer.
+
+### Handshakes when one value is not enough
+
+Lesson 04 needs two inputs, so the student asks for the next one with
+`jmp next_input`; the checker loads it and jumps back to a `resume:` label. That
+is a subroutine call built by hand from two plain jumps. Two consequences:
+
+- the return point is fixed, which is fine for two values and does not scale —
+  a three-input level is the natural argument for finally introducing
+  `rcall`/`ret` and the stack;
+- `resume:` must **ship inside `answer.inc`**, or the checker's `jmp resume`
+  fails to link against an empty answer.
+
+### Verifying a level without hardware
+
+Assembling proves nothing about whether a level grades correctly. Each level's
+README carries a "Verified behaviour" table produced by running the assembled
+firmware through a small AVR interpreter (skeleton / correct / each plausible
+wrong answer / correct-but-unsignalled). Reproduce that table for any new level
+before shipping it. The interpreter currently lives outside the repo; folding it
+in as `./avr check N` is an open item below.
+
 ## Open items / not yet decided
 - Whether to introduce a second architecture unit (ARM Cortex-M via Uno R4 WiFi, or RISC-V via ESP32-C3) after the AVR fundamentals unit
 - Final choice between Arduino Education Shield vs. relying solely on ELEGOO kit's bundled components for lab exercises — now leaning toward the kit's parts, since the shield's Uno form factor raises SPI/I2C questions on a Mega
 - Whether the Mega's split between `sbi`-able and memory-mapped ports is a teaching liability worth switching the class to Unos over
-- Lesson sequence beyond 02 (timers/interrupts, USART, arithmetic and the SREG flags are the obvious next candidates)
+- Lesson sequence beyond 06 (timers/interrupts, USART, and memory/pointers are the obvious next candidates)
+- **Flat vocabulary vs. tiers.** `INSTRUCTIONS.md` currently lists only what the lessons use (~30 instructions). Either keep it flat and add each instruction when a level needs it, or group levels into tiers that each unlock a block (logic -> shifts -> memory -> subroutines -> interrupts) so students always know the size of their vocabulary. Undecided
+- **Fold the level verifier into the repo.** A small AVR interpreter was used to verify levels 04 and 05 by executing the assembled firmware for every plausible student answer; it currently lives outside the repo. Making it `./avr check N` would let level authors regenerate each README's "Verified behaviour" table
 - **Debugging is researched but not set up** — see "Debugging and single-stepping" in `docs/SETUP.md`. Three findings worth carrying: (1) PlatformIO's bundled `avr-gdb` is broken on this Mac (linked against the removed Python 2.7 framework), so any GDB-based debugging needs `brew install avr-gdb` from the `osx-cross/avr` tap first; (2) this board's high fuse is `0xD8`, so **JTAG and OCD are disabled** and enabling them needs an ISP programmer, not the bootloader; (3) JTAG would occupy PF4-PF7 = pins A4-A7. The ATmega2560 having real JTAG where the 328P has only debugWIRE is a genuine point in the Mega's favour for the board question above. Recommended first step when wanted: `debug_tool = simavr` (simulator, no hardware, shows r0-r31 live)
