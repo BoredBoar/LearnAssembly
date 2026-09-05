@@ -141,4 +141,4 @@ One option for the curriculum is to keep the whole set flat and introduce each
 instruction when a level needs it. Another is to group levels into **tiers**,
 each tier unlocking a block of instructions — arithmetic, then memory, then
 subroutines, then interrupts — so a student always knows the size of the
-vocabulary they are working with. That decision is still open; see `claude.md`.
+vocabulary they are working with. That decision is still open; see `CLAUDE.md`.

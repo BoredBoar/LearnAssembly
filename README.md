@@ -1,7 +1,7 @@
 # LearnAssembly
 
 Teaching materials and a working build setup for a first course in assembly
-programming on AVR. Course/hardware rationale lives in [claude.md](claude.md).
+programming on AVR. Course/hardware rationale lives in [CLAUDE.md](CLAUDE.md).
 
 Supports two boards from one set of lesson sources:
 
